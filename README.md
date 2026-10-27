@@ -11,6 +11,7 @@ A high-performance, multi-threaded HTTP web server built from scratch in C. This
 - **Dynamic MIME Type Detection**: Automatically checks file extensions against a lookup table to set the correct `Content-Type` headers for `.html`, `.css`, `.js`, `.jpg`, `.png`, `.mp3`, and `.mp4`.
 - **Smart Routing**: Requests made to the root path `/` are automatically mapped to `index.html`, enabling simple website hosting without additional configuration.
 - **Port Reusability**: Immediate recovery and restart capability via `SO_REUSEADDR`.
+- **Safe Paths**: Only regular files inside the server folder are served. Requests containing `..`, absolute paths (`//etc/passwd`) and folders get a 404, and the request line is read with length limits so long URLs cannot overflow the buffers.
 - **Error Handling**: Built-in handling for common HTTP errors such as 404 Not Found, allowing the server to gracefully respond to missing resource requests.
 
 ## 🛠️ Technical Stack
@@ -47,7 +48,7 @@ graph TD;
 1. **Socket Initialization**: The server creates a TCP socket and binds it to port `8080`. The `SO_REUSEADDR` option is enabled to allow quick restarts without waiting for the port to be released by the OS.
 2. **Listening for Connections**: The server enters a continuous loop using `accept()` to listen for incoming client connections.
 3. **Thread Creation**: Each new connection is handled by a detached thread, allowing multiple clients to interact with the server simultaneously.
-4. **Request Parsing**: The server parses the incoming HTTP request to determine the requested file path.
+4. **Request Parsing**: The server parses the incoming HTTP request (with length limits) to determine the requested file path, and refuses paths that would leave the server folder.
 5. **File Response**: Once the file is located:
    - The server retrieves the file size using `fstat()`
    - Determines the MIME type
@@ -167,7 +168,7 @@ This server is ideal for:
 
 - **Thread Pool implementation**: Replace thread-per-request with a persistent thread pool to reduce thread creation and destruction overhead.
 - **Asynchronous I/O**: Migrate to `epoll` or `kqueue` for an event-driven architecture to handle 10k+ concurrent connections efficiently in a single thread.
-- **Improved Security**: Implement chroot directory jailing to prevent path traversal attacks (e.g., preventing `GET /../../etc/passwd`).
+- **Improved Security**: Add chroot directory jailing on top of the current path checks, so even a missed case cannot reach files outside the web root.
 - **HTTP/1.1 Features**: Support for keep-alive connections (`Connection: keep-alive`) to reduce connection establishment latency.
 - **Configuration File**: Load port and web root bindings from a `config.ini` or similar config file instead of hardcoded macros.
 

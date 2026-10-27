@@ -24,15 +24,22 @@ void *handle_client_request(void *client_socket_argument) {
     char request_buffer[1024] = {0}, request_method[8], request_path[256];
     
     // Receive and parse request
-    if (recv(client_socket, request_buffer, sizeof(request_buffer) - 1, 0) > 0 && sscanf(request_buffer, "%s %s", request_method, request_path) == 2) {
+    if (recv(client_socket, request_buffer, sizeof(request_buffer) - 1, 0) > 0 && sscanf(request_buffer, "%7s %255s", request_method, request_path) == 2) {
         printf("Request: %s %s\n", request_method, request_path);
         
         char *requested_file_path = (strcmp(request_path, "/") == 0) ? "index.html" : request_path + 1; // Map root path to index.html
-        int file_descriptor = open(requested_file_path, O_RDONLY);
+        // Only serve files inside this folder: no "..", no absolute paths like "//etc/passwd"
+        int path_is_safe = request_path[0] == '/' && requested_file_path[0] != '/' && strstr(request_path, "..") == NULL;
+        int file_descriptor = path_is_safe ? open(requested_file_path, O_RDONLY) : -1;
+        
+        // Only regular files (not folders or devices)
+        struct stat file_status;
+        if (file_descriptor != -1 && (fstat(file_descriptor, &file_status) != 0 || !S_ISREG(file_status.st_mode))) {
+            close(file_descriptor);
+            file_descriptor = -1;
+        }
         
         if (file_descriptor != -1) {
-            struct stat file_status;
-            fstat(file_descriptor, &file_status);
             
             // Content type
             char *response_mime_type = "application/octet-stream";
